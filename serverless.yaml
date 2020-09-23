@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 'AWS::Serverless-2016-10-31'
+Description: >-
+  An AWS Serverless Application that uses the ASP.NET Core framework running in
+  Amazon Lambda.
+
+# Parameters:
+
+
+Resources:
+  ContentBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      Tags:
+        - Key: Platform
+          Value: !Ref 'AWS::StackName'
+        # - Key: Environment
+        #   Value: !Ref EnvironmentType
+        - Key: Purpose
+          Value: Storing user generated content
+
+  ContentBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ContentBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${ContentBucket}/*'
+
+  ContentBucketIAMPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: !Sub '${ContentBucket}RWPolicy'
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListAllMyBuckets
+            Resource: 'arn:aws:s3:::*'
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: 'arn:aws:s3:::${ContentBucket}'
+          - Effect: Allow
+            Action:
+              - s3:PutObject*
+              - s3:GetObject*
+              - s3:DeleteObject*
+            Resource: 'arn:aws:s3:::${ContentBucket}/*'
+
+
+# S3 bucket for content
+# S3 bucket for frontend
+# lambda functions
+# api gateway
+# cloudfront?
+# route 53 records
