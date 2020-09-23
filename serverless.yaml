@@ -53,9 +53,31 @@ Resources:
               - s3:DeleteObject*
             Resource: 'arn:aws:s3:::${ContentBucket}/*'
 
+  ImageTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S # String
+        - AttributeName: UploadedOn
+          AttributeType: S # String (really its a date)
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+        - AttributeName: UploadedOn
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1 # TODO: make parms
+        WriteCapacityUnits: 1
+
+Outputs:
+  ImageTableName:
+    Description: The name of the image DDB table
+    Value: !Ref ImageTable
 
 # S3 bucket for content
 # S3 bucket for frontend
+# dynamo db table(s)
 # lambda functions
 # api gateway
 # cloudfront?
