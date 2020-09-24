@@ -19,6 +19,11 @@ namespace Homescreens.Api
 
         private readonly IDynamoDBContext _ddbContext;
 
+        private readonly Dictionary<string, string> _defaultHeaders = new Dictionary<string, string>
+        {
+            {"Content-Type", "application/json"}
+        };
+
         public ImageFunctions()
         {
             var tableName = Environment.GetEnvironmentVariable(DYNAMO_TABLE_NAME_KEY);
@@ -54,6 +59,43 @@ namespace Homescreens.Api
             _ddbContext = new DynamoDBContext(new AmazonDynamoDBClient(), config);
         }
 
+        public async Task<APIGatewayProxyResponse> GetImagesAsync(APIGatewayProxyRequest request, ILambdaContext context)
+        {
+            var search = _ddbContext.ScanAsync<HomeScreenImage>(null);
+            var page = await search.GetNextSetAsync();
+
+            context.Logger.LogLine($"Found {page.Count} images");
+
+            var response = new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = JsonSerializer.Serialize(page),
+                Headers = _defaultHeaders
+            };
+
+            return response;
+        }
+
+        public async Task<APIGatewayProxyResponse> GetImageAsync(APIGatewayProxyRequest request, ILambdaContext context)
+        {
+            var id = request.PathParameters["id"];
+
+            var response = new APIGatewayProxyResponse();
+
+            var image = await _ddbContext.LoadAsync<HomeScreenImage>(id);
+            if (image == null)
+            {
+                response.StatusCode = (int)HttpStatusCode.NotFound;
+                return response;
+            }
+
+            response.StatusCode = (int)HttpStatusCode.OK;
+            response.Headers = _defaultHeaders;
+            response.Body = JsonSerializer.Serialize(image);
+
+            return response;
+        }
+
         public async Task<APIGatewayProxyResponse> AddImageAsync(APIGatewayProxyRequest request, ILambdaContext context)
         {
             var image = JsonSerializer.Deserialize<HomeScreenImage>(request?.Body);
@@ -65,10 +107,7 @@ namespace Homescreens.Api
             {
                 StatusCode = (int)HttpStatusCode.OK,
                 Body = JsonSerializer.Serialize(image),
-                Headers = new Dictionary<string, string>
-                {
-                    {"Content-Type", "application/json"}
-                }
+                Headers = _defaultHeaders
             };
 
             return response;

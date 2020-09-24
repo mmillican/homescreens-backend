@@ -27,7 +27,56 @@ namespace Homescreens.Api.Tests
         }
 
         [Fact]
-        public async Task AddImage_Saves()
+        public async Task GetImage_ReturnsImage_ForValidId()
+        {
+            var imageFunctions = new ImageFunctions(_ddbClient, _tableName);
+
+            var now = DateTime.Now;
+
+            // We have to create a record that we can test with
+            var testImage = new HomeScreenImage
+            {
+                Type = "phone",
+                FileName = $"my-image-{now.Ticks}.png",
+                UserName = $"test-{now.Ticks}",
+                UploadedOn = now
+            };
+
+            var testId = testImage.Id;
+
+            var createTestImageRequest = new APIGatewayProxyRequest
+            {
+                Body = JsonSerializer.Serialize(testImage)
+            };
+
+            // Arrange
+            var context = new TestLambdaContext();
+            var createTestResponse = await imageFunctions.AddImageAsync(createTestImageRequest, context);
+
+            var getImageRequest = new APIGatewayProxyRequest
+            {
+                PathParameters = new Dictionary<string, string>
+                {
+                    { "id" , testId }
+                }
+            };
+
+            // Act
+            var getImageResponse = await imageFunctions.GetImageAsync(getImageRequest, context);
+
+            // Assert
+            Assert.Equal(200, getImageResponse.StatusCode);
+            Assert.NotEmpty(getImageResponse.Body);
+
+            var retrievedImage = JsonSerializer.Deserialize<HomeScreenImage>(getImageResponse.Body);
+            Assert.NotNull(retrievedImage);
+            Assert.Equal(testId, retrievedImage.Id);
+            Assert.Equal("phone", retrievedImage.Type);
+            Assert.NotEmpty(retrievedImage.FileName);
+        }
+
+        [Fact]
+        public async Task AddImage_SavesAndReturnsResponse()
         {
             // Arrange
 
@@ -77,11 +126,6 @@ namespace Homescreens.Api.Tests
                     {
                         KeyType = KeyType.HASH,
                         AttributeName = "Id"
-                    },
-                    new KeySchemaElement
-                    {
-                        KeyType = KeyType.RANGE,
-                        AttributeName = "UploadedOn"
                     }
                 },
                 AttributeDefinitions = new List<AttributeDefinition>
@@ -89,11 +133,6 @@ namespace Homescreens.Api.Tests
                     new AttributeDefinition
                     {
                         AttributeName = "Id",
-                        AttributeType = ScalarAttributeType.S
-                    },
-                    new AttributeDefinition
-                    {
-                        AttributeName = "UploadedOn",
                         AttributeType = ScalarAttributeType.S
                     }
                 }
