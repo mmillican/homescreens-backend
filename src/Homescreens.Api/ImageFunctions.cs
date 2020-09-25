@@ -105,7 +105,7 @@ namespace Homescreens.Api
 
             var response = new APIGatewayProxyResponse
             {
-                StatusCode = (int)HttpStatusCode.OK,
+                StatusCode = (int)HttpStatusCode.Created,
                 Body = JsonSerializer.Serialize(image),
                 Headers = _defaultHeaders
             };

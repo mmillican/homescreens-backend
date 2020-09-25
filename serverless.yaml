@@ -4,8 +4,11 @@ Description: >-
   An AWS Serverless Application that uses the ASP.NET Core framework running in
   Amazon Lambda.
 
-# Parameters:
-
+Parameters:
+  ApiLogRetentionDays:
+    Type: Number
+    Description: The number of days to keep CloudWatch logs for the APIs
+    Default: 14
 
 Resources:
   ContentBucket:
@@ -59,26 +62,156 @@ Resources:
       AttributeDefinitions:
         - AttributeName: Id
           AttributeType: S # String
-        - AttributeName: UploadedOn
-          AttributeType: S # String (really its a date)
       KeySchema:
         - AttributeName: Id
           KeyType: HASH
-        - AttributeName: UploadedOn
-          KeyType: RANGE
       ProvisionedThroughput:
         ReadCapacityUnits: 1 # TODO: make parms
         WriteCapacityUnits: 1
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: DynamoDb
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:BatchGet*
+                  - dynamodb:Get*
+                  - dynamodb:PutItem
+                  - dynamodb:Update*
+                Resource: !GetAtt ImageTable.Arn
+
+  ApiLambdaRoleLogPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: LambdaLoggingPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !GetAtt GetImagesApiLogGroup.Arn
+      Roles:
+        - !Ref LambdaRole
+
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      # Cors: !Sub "'${AllowedCorsOrigin}'"
+
+  GetImagesApi:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: 'Homescreens.Api::Homescreens.Api.ImageFunctions::GetImagesAsync'
+      Runtime: dotnetcore3.1
+      CodeUri: './src/Homescreens.Api'
+      Description: Get a list of images
+      MemorySize: 128
+      Timeout: 30
+      Policies:
+        - AWSLambdaFullAccess
+      Environment:
+        Variables:
+          ImageTable: !Ref ImageTable
+          # AllowedCorsOrigin: !Ref AllowedCorsOrigin
+      Events:
+        GetList:
+          Type: Api
+          Properties:
+            Path: /images
+            Method: GET
+            RestApiId:
+              Ref: ApiGatewayApi
+
+  GetImageApi:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: 'Homescreens.Api::Homescreens.Api.ImageFunctions::GetImageAsync'
+      Runtime: dotnetcore3.1
+      CodeUri: './src/Homescreens.Api'
+      Description: Get an image by ID
+      MemorySize: 128
+      Timeout: 30
+      Policies:
+        - AWSLambdaFullAccess
+      Environment:
+        Variables:
+          ImageTable: !Ref ImageTable
+          # AllowedCorsOrigin: !Ref AllowedCorsOrigin
+      Events:
+        GetItem:
+          Type: Api
+          Properties:
+            Path: /images/{id}
+            Method: GET
+            RestApiId:
+              Ref: ApiGatewayApi
+
+  PostImageApi:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: 'Homescreens.Api::Homescreens.Api.ImageFunctions::AddImageAsync'
+      Runtime: dotnetcore3.1
+      CodeUri: './src/Homescreens.Api'
+      Description: Add a new image
+      MemorySize: 128
+      Timeout: 30
+      Policies:
+        - AWSLambdaFullAccess
+      Environment:
+        Variables:
+          ImageTable: !Ref ImageTable
+          # AllowedCorsOrigin: !Ref AllowedCorsOrigin
+      Events:
+        GetItem:
+          Type: Api
+          Properties:
+            Path: /images
+            Method: POST
+            RestApiId:
+              Ref: ApiGatewayApi
+
+
+  GetImagesApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetImagesApi}'
+      RetentionInDays: !Ref ApiLogRetentionDays
+  GetImageApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetImageApi}'
+      RetentionInDays: !Ref ApiLogRetentionDays
+  PostImageApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PostImageApi}'
+      RetentionInDays: !Ref ApiLogRetentionDays
 
 Outputs:
   ImageTableName:
     Description: The name of the image DDB table
     Value: !Ref ImageTable
 
-# S3 bucket for content
+  ApiUrl:
+    Value: !Sub 'https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod'
+
 # S3 bucket for frontend
-# dynamo db table(s)
 # lambda functions
-# api gateway
 # cloudfront?
 # route 53 records
