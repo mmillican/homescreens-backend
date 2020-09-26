@@ -33,6 +33,37 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub 'arn:aws:s3:::${ContentBucket}/*'
 
+  ImageProcessorFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: 'Homescreens.ImageProcessor::Homescreens.ImageProcessor.ImageHandler::ProcessImage'
+      Runtime: dotnetcore3.1
+      CodeUri: './src/Homescreens.ImageProcessor'
+      Description: 'Resizes and processes uploaded images'
+      MemorySize: 256
+      Timeout: 30
+      Role: null
+      Policies:
+        - AWSLambdaFullAccess
+      Events:
+        ImageUploaded:
+          Type: S3
+          Properties:
+            Bucket: !Ref ContentBucket
+            Events:
+              - 's3:ObjectCreated:*'
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: 'upload'
+
+  ImageProcessorFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ImageProcessorFunction}'
+      RetentionInDays: !Ref ApiLogRetentionDays
+
   ContentBucketIAMPolicy:
     Type: 'AWS::IAM::ManagedPolicy'
     Properties:
