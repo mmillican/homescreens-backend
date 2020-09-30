@@ -1,6 +1,6 @@
 using System;
 
-namespace Homescreens.Api.Models
+namespace Homescreens.Shared.Models
 {
     public class HomeScreenImage
     {

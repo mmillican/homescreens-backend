@@ -1,17 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Amazon;
 using Amazon.DynamoDBv2;
-using Amazon.DynamoDBv2.DataModel;
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Homescreens.Api.Models;
+using Homescreens.Shared.Models;
+using Homescreens.Shared.Services;
 
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 namespace Homescreens.Api
@@ -23,8 +25,8 @@ namespace Homescreens.Api
         private const string UPLOAD_KEY_PREFIX = "upload/";
         private const int PRESIGN_URL_EXPIRATION_SECS = 120;
 
-        private readonly IDynamoDBContext _ddbContext;
         private readonly IAmazonS3 _s3Client;
+        private readonly DynamoDbService _ddbService;
         private readonly string _bucketName;
 
         private readonly Dictionary<string, string> _defaultHeaders = new Dictionary<string, string>
@@ -37,62 +39,35 @@ namespace Homescreens.Api
 
         public ImageFunctions()
         {
-            var tableName = Environment.GetEnvironmentVariable(DYNAMO_TABLE_NAME_KEY);
-            if (string.IsNullOrEmpty(tableName))
-            {
-                throw new Exception("Missing image table name");
-            }
-
             _bucketName = Environment.GetEnvironmentVariable(BUCKET_NAME_KEY);
             if (string.IsNullOrEmpty(_bucketName))
             {
                 throw new Exception("Missing S3 bucket name");
             }
 
-            AWSConfigsDynamoDB.Context.TypeMappings[typeof(HomeScreenImage)] =
-                new Amazon.Util.TypeMapping(typeof(HomeScreenImage), tableName);
-
-            var config = new DynamoDBContextConfig
-            {
-                Conversion = DynamoDBEntryConversion.V2
-            };
-
-            _ddbContext = new DynamoDBContext(new AmazonDynamoDBClient(), config);
-
             _s3Client = new AmazonS3Client(RegionEndpoint.USEast1); // TODO: Specify from env?
+            _ddbService = new DynamoDbService();
         }
 
         public ImageFunctions(IAmazonDynamoDB ddbClient, IAmazonS3 s3Client, string tableName, string bucketName)
         {
-            if (string.IsNullOrEmpty(tableName))
-            {
-                throw new Exception("Missing image table name");
-            }
-
-            AWSConfigsDynamoDB.Context.TypeMappings[typeof(HomeScreenImage)] =
-                new Amazon.Util.TypeMapping(typeof(HomeScreenImage), tableName);
-
-            var config = new DynamoDBContextConfig
-            {
-                Conversion = DynamoDBEntryConversion.V2
-            };
-            _ddbContext = new DynamoDBContext(new AmazonDynamoDBClient(), config);
-
             _s3Client = s3Client;
             _bucketName = bucketName;
+
+            _s3Client = new AmazonS3Client(RegionEndpoint.USEast1); // TODO: Specify from env?
+            _ddbService = new DynamoDbService();
         }
 
         public async Task<APIGatewayProxyResponse> GetImagesAsync(APIGatewayProxyRequest request, ILambdaContext context)
         {
-            var search = _ddbContext.ScanAsync<HomeScreenImage>(null);
-            var page = await search.GetNextSetAsync();
+            var images = await _ddbService.GetAsync<HomeScreenImage>();
 
-            context.Logger.LogLine($"Found {page.Count} images");
+            context.Logger.LogLine($"Found {images.Count()} images");
 
             var response = new APIGatewayProxyResponse
             {
                 StatusCode = (int)HttpStatusCode.OK,
-                Body = JsonSerializer.Serialize(page),
+                Body = JsonSerializer.Serialize(images),
                 Headers = _defaultHeaders
             };
 
@@ -105,7 +80,7 @@ namespace Homescreens.Api
 
             var response = new APIGatewayProxyResponse();
 
-            var image = await _ddbContext.LoadAsync<HomeScreenImage>(id);
+            var image = await _ddbService.GetByIdAsync<HomeScreenImage>(id);
             if (image == null)
             {
                 response.StatusCode = (int)HttpStatusCode.NotFound;
@@ -158,7 +133,7 @@ namespace Homescreens.Api
             var presignedUrl = _s3Client.GetPreSignedURL(presignRequest);
 
             context.Logger.LogLine($"Saving image with ID {image.Id}");
-            await _ddbContext.SaveAsync<HomeScreenImage>(image);
+            await _ddbService.SaveAsync(image);
 
             var addImageResponse = new AddImageResponseModel
             {
