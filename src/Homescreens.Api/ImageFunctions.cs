@@ -109,7 +109,7 @@ namespace Homescreens.Api
                 UserName = "test", // TODO: set from auth'd user
                 // IsPublished is false until the image has been processed
             };
-            image.FileName = $"{image.Id}{fileExt}";
+            image.FileName = $"{image.Id}{fileExt}".ToLower();
 
             var keyPrefix = $"{UPLOAD_KEY_PREFIX}{image.UploadedOn.ToString("yyyy/MM")}";
             var imageFileKey = $"{keyPrefix}/{image.FileName}";
