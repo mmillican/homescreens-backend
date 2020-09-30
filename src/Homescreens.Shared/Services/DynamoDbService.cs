@@ -44,8 +44,8 @@ namespace Homescreens.Shared.Services
                 throw new Exception("Missing image table name");
             }
 
-            AWSConfigsDynamoDB.Context.TypeMappings[typeof(HomeScreenImage)] =
-                new Amazon.Util.TypeMapping(typeof(HomeScreenImage), imageTableName);
+            AWSConfigsDynamoDB.Context.TypeMappings[typeof(ScreenImage)] =
+                new Amazon.Util.TypeMapping(typeof(ScreenImage), imageTableName);
         }
 
         public Task<TModel> GetByIdAsync<TModel>(string id) where TModel : class, new()

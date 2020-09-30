@@ -2,7 +2,7 @@ using System;
 
 namespace Homescreens.Shared.Models
 {
-    public class HomeScreenImage
+    public class ScreenImage
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
 

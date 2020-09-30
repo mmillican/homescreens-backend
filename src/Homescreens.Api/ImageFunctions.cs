@@ -60,7 +60,7 @@ namespace Homescreens.Api
 
         public async Task<APIGatewayProxyResponse> GetImagesAsync(APIGatewayProxyRequest request, ILambdaContext context)
         {
-            var images = await _ddbService.GetAsync<HomeScreenImage>();
+            var images = await _ddbService.GetAsync<ScreenImage>();
 
             context.Logger.LogLine($"Found {images.Count()} images");
 
@@ -80,7 +80,7 @@ namespace Homescreens.Api
 
             var response = new APIGatewayProxyResponse();
 
-            var image = await _ddbService.GetByIdAsync<HomeScreenImage>(id);
+            var image = await _ddbService.GetByIdAsync<ScreenImage>(id);
             if (image == null)
             {
                 response.StatusCode = (int)HttpStatusCode.NotFound;
@@ -102,7 +102,7 @@ namespace Homescreens.Api
 
             var fileExt = Path.GetExtension(imageRequest.FileName);
 
-            var image = new HomeScreenImage
+            var image = new ScreenImage
             {
                 Type = imageRequest.ImageType,
                 UploadedOn = DateTime.UtcNow,

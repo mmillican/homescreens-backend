@@ -127,7 +127,7 @@ namespace Homescreens.ImageProcessor
                     context.Logger.LogLine($"... Resized and saved file '{s3Event.Object.Key}' to '{imgSize.Key}'");
                 }
 
-                var imageRecord = await _ddbService.GetByIdAsync<HomeScreenImage>(imageId);
+                var imageRecord = await _ddbService.GetByIdAsync<ScreenImage>(imageId);
                 if (imageRecord != null)
                 {
                     imageRecord.IsPublished = true;
