@@ -17,5 +17,11 @@ namespace Homescreens.Api.Models
         public string UserName { get; set; }
 
         public string FileName { get; set; }
+
+        /// <summary>
+        /// Whether or not the image has been processed and is
+        /// published
+        /// </summary>
+        public bool IsPublished { get; set; }
     }
 }

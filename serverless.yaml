@@ -10,10 +10,25 @@ Parameters:
     Description: The number of days to keep CloudWatch logs for the APIs
     Default: 14
 
+  AllowedCorsOrigin:
+    Type: String
+    Description: 'The CORS origin to allow for APIs'
+
 Resources:
   ContentBucket:
     Type: 'AWS::S3::Bucket'
     Properties:
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Sub '${AllowedCorsOrigin}'
+            AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - 'HEAD'
+              - 'GET'
+              - 'POST'
+              - 'PUT'
       Tags:
         - Key: Platform
           Value: !Ref 'AWS::StackName'
@@ -30,7 +45,9 @@ Resources:
         Statement:
           - Effect: Allow
             Principal: '*'
-            Action: s3:GetObject
+            Action:
+              - s3:GetObject
+              - s3:PutObject* # allow uploads from the browser # TODO: I don't think this should have public write?
             Resource: !Sub 'arn:aws:s3:::${ContentBucket}/*'
 
   ImageProcessorFunction:
@@ -136,14 +153,49 @@ Resources:
               - logs:PutLogEvents
             Resource:
               - !GetAtt GetImagesApiLogGroup.Arn
+              - !GetAtt GetImageApiLogGroup.Arn
+              - !GetAtt PostImageApiLogGroup.Arn
       Roles:
         - !Ref LambdaRole
+        - !Ref ApiLambdaRole
+
+  ApiLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub '${AWS::StackName}ApiLambdaPolicies'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject*
+                  - s3:PutObject*
+                Resource: 'arn:aws:s3:::${ContentBucket}/*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:BatchGet*
+                  - dynamodb:Get*
+                  - dynamodb:PutItem
+                  - dynamodb:Update*
+                Resource: !GetAtt ImageTable.Arn
 
   ApiGatewayApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
       # Cors: !Sub "'${AllowedCorsOrigin}'"
+      Cors:
+        AllowOrigin: !Sub "'${AllowedCorsOrigin}'"
+        AllowMethods: "'GET, POST, PUT, DELETE, OPTIONS'"
+        AllowHeaders: "'Content-Type'"
 
   GetImagesApi:
     Type: 'AWS::Serverless::Function'
@@ -154,6 +206,7 @@ Resources:
       Description: Get a list of images
       MemorySize: 128
       Timeout: 30
+      Role: !GetAtt ApiLambdaRole.Arn
       Policies:
         - AWSLambdaFullAccess
       Environment:
@@ -178,6 +231,7 @@ Resources:
       Description: Get an image by ID
       MemorySize: 128
       Timeout: 30
+      Role: !GetAtt ApiLambdaRole.Arn
       Policies:
         - AWSLambdaFullAccess
       Environment:
@@ -202,11 +256,13 @@ Resources:
       Description: Add a new image
       MemorySize: 128
       Timeout: 30
+      Role: !GetAtt ApiLambdaRole.Arn
       Policies:
         - AWSLambdaFullAccess
       Environment:
         Variables:
           ImageTable: !Ref ImageTable
+          BucketName: !Ref ContentBucket
           # AllowedCorsOrigin: !Ref AllowedCorsOrigin
       Events:
         GetItem:

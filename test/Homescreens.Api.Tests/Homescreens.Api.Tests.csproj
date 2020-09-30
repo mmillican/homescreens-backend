@@ -19,6 +19,7 @@
     <PackageReference Include="Amazon.Lambda.TestUtilities" Version="1.1.0" />
     <PackageReference Include="Amazon.Lambda.APIGatewayEvents" Version="2.1.0" />
     <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.3.105.38" />
+    <PackageReference Include="AWSSDK.S3" Version="3.3.110.62" />
   </ItemGroup>
 
 </Project>
