@@ -62,6 +62,9 @@ Resources:
       Role: null
       Policies:
         - AWSLambdaFullAccess
+      Environment:
+        Variables:
+          ImageTable: !Ref ImageTable
       Events:
         ImageUploaded:
           Type: S3

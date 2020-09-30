@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Amazon.Lambda.Core;
 using Amazon.Lambda.S3Events;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Homescreens.Shared.Models;
+using Homescreens.Shared.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Processing;
@@ -14,28 +17,36 @@ using SixLabors.ImageSharp.Processing;
 
 namespace Homescreens.ImageProcessor
 {
-
     public class ImageHandler
     {
         private const string OriginalKeyPrefix = "upload/";
 
+        // TODO: Add other device image types
         private readonly List<ImageSize> _sizes = new List<ImageSize>
         {
-            new ImageSize("thumb", 100, 100),
-            new ImageSize("small", 281, 609),
-            new ImageSize("medium", 563, 1218),
-            new ImageSize("large", 844, 1827)
+            new ImageSize("phone", "thumb", 100, 100),
+            new ImageSize("phone", "small", 281, 609), // 25%
+            new ImageSize("phone", "medium", 563, 1218), // 50%
+            new ImageSize("phone", "large", 844, 1827), // 75%
+
+            // This is assuming iPad in Portrait mode (10.5" model)
+            new ImageSize("tablet", "thumb", 100, 100),
+            new ImageSize("tablet", "small", 417, 556),
+            new ImageSize("tablet", "medium", 834, 1112),
+            new ImageSize("tablet", "large", 1251, 1668)
         };
 
         private readonly IAmazonS3 _s3Client;
+        private readonly DynamoDbService _ddbService;
 
         /// <summary>
-        /// Defalult constructor used by Lambda
+        /// Default constructor used by Lambda
         /// </summary>
 
         public ImageHandler()
         {
             _s3Client = new AmazonS3Client();
+            _ddbService = new DynamoDbService();
         }
 
         /// <summary>
@@ -44,6 +55,7 @@ namespace Homescreens.ImageProcessor
         public ImageHandler(IAmazonS3 s3Client)
         {
             _s3Client = s3Client;
+            _ddbService = new DynamoDbService();
         }
 
         public async Task<string> ProcessImage(S3Event evnt, ILambdaContext context)
@@ -55,10 +67,13 @@ namespace Homescreens.ImageProcessor
                 return null;
             }
 
-            // TODO: This is just an example; replace with resizing
             try
             {
-                context.Logger.LogLine($"Processing image {s3Event.Object.Key}");
+                var objMetadata = await _s3Client.GetObjectMetadataAsync(s3Event.Bucket.Name, s3Event.Object.Key);
+                var imageId = objMetadata.Metadata["x-amz-meta-imageid"];
+                var imageType = objMetadata.Metadata["x-amz-meta-imagetype"];
+
+                context.Logger.LogLine($"Processing image {s3Event.Object.Key}. ImageType: {imageType ?? "unknown"}");
 
                 // Copy the file from the upload folder
                 var originalSizeKey = GetResizedFileKey(s3Event.Object.Key);
@@ -78,7 +93,8 @@ namespace Homescreens.ImageProcessor
                     imageBytes = ms.ToArray();
                 }
 
-                foreach (var imgSize in _sizes)
+                var imageTypeSizes = _sizes.Where(x => x.ImageType == imageType);
+                foreach (var imgSize in imageTypeSizes)
                 {
                     context.Logger.LogLine($"... Resizing to {imgSize.Key}");
 
@@ -91,11 +107,10 @@ namespace Homescreens.ImageProcessor
                         {
                             image.Mutate(x => x.Resize(new ResizeOptions
                             {
-                                Mode = ResizeMode.Crop, // TODO: allow each profile to specify method used
+                                Mode = ResizeMode.Max, // TODO: allow each profile to specify method used
                                 Position = AnchorPositionMode.Center,
                                 Size = new Size(imgSize.Width, imgSize.Height)
-                            })
-                            .AutoOrient());
+                            }));
                             image.Save(outStream, imageFormat);
 
                             var putObjectRequest = new PutObjectRequest
@@ -110,6 +125,13 @@ namespace Homescreens.ImageProcessor
                     }
 
                     context.Logger.LogLine($"... Resized and saved file '{s3Event.Object.Key}' to '{imgSize.Key}'");
+                }
+
+                var imageRecord = await _ddbService.GetByIdAsync<HomeScreenImage>(imageId);
+                if (imageRecord != null)
+                {
+                    imageRecord.IsPublished = true;
+                    await _ddbService.SaveAsync(imageRecord);
                 }
 
                 // Delete the original
